@@ -13,6 +13,10 @@ def plot_candlestick_with_indicators(ticker="ETH-USD", interval="1d", period="1m
             actions=False,
             progress=False
         )
+        if data.empty:
+            raise ValueError("다운로드된 데이터가 비어 있습니다.")
+
+
 
         if isinstance(data.columns, pd.MultiIndex):
             data = data.xs(ticker, level="Ticker", axis=1)

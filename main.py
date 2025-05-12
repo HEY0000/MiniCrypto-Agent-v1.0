@@ -17,12 +17,13 @@ st.write("AI가 뉴스와 트윗을 요약하고, 시세와 함께 매수 판단
 # ✅ 모드 선택
 mode = st.radio("모드 선택", ["AI 요약 도우미 (분리형)", "AI 조언 에이전트 (통합형)"])
 
-chart_interval = st.selectbox("캔들차트 기간 선택", {
+interval_options = {
     "일봉 (1d)": "1d",
     "주봉 (1wk)": "1wk",
     "월봉 (1mo)": "1mo"
-})
-
+}
+chart_interval_label = st.selectbox("캔들차트 기간 선택", list(interval_options.keys()))
+chart_interval = interval_options[chart_interval_label]
 # ✅ 사용자 입력
 query = st.text_input("궁금한 코인을 입력하세요 (예: bitcoin, ethereum)")
 
@@ -82,7 +83,6 @@ if query:
 
             # ✅ 차트 표시 (조건부)
             with st.spinner("📊 차트를 불러오는 중입니다..."):
-                from utils.chart_generator import plot_candlestick
                 fig, latest_row = plot_candlestick_with_indicators(ticker=coin_name, interval=chart_interval, period="3mo")
 
                 if fig:
