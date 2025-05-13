@@ -2,6 +2,21 @@
 import os
 from openai import OpenAI
 
+from langchain.chains import RetrievalQA
+from utils.rag_pipeline import load_faiss_index  # 상대 경로로 수정 필요 시 조정
+from langchain_community.chat_models import ChatOpenAI
+
+
+def answer_with_rag(user_query, index_path="faiss_index"):
+    vectorstore = load_faiss_index(index_path)
+    retriever = vectorstore.as_retriever(search_type="similarity", k=3)
+    qa_chain = RetrievalQA.from_chain_type(
+        llm=ChatOpenAI(model="gpt-4"),
+        retriever=retriever
+    )
+    return qa_chain.run(user_query)
+
+
 client = OpenAI(
     api_key=os.getenv("OPENAI_API_KEY"),
     project=os.getenv("OPENAI_PROJECT_ID"),
@@ -52,6 +67,7 @@ def summarize_technical_indicators(latest_row, coin_name):
     - 5일 이동평균: {values['MA5']:.2f}
     - 20일 이동평균: {values['MA20']:.2f}
     - RSI(14): {values['RSI']:.2f}
+    - MACD: {values['MACD']:.2f}, Signal: {values['MACDSignal']:.2f}
     - 골든크로스 발생: {'Yes' if values['golden_cross'] else 'No'}
 
     초보자도 이해할 수 있게 지금 매수 적기인지 간단히 설명해줘.

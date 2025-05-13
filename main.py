@@ -5,10 +5,9 @@ from utils.gpt_helper import extract_coin_name, summarize_content, summarize_tec
 from utils.news_scraper import get_rss_news
 from utils.tweet_scraper import get_recent_tweets
 from utils.price_fetcher import get_price
-from utils.agent import coin_advisor_agent  # 🧠 에이전트 통합 기능
+from utils.agent import coin_advisor_agent
 from utils.chart_generator import plot_candlestick_with_indicators
-
-
+from utils.rag_news import build_news_index, answer_news_query
 
 st.set_page_config(page_title="코린이 AI 코인 쇼핑 도우미", page_icon="🪙")
 st.title("🪙 코린이 AI 코인 쇼핑 도우미")
@@ -24,12 +23,13 @@ interval_options = {
 }
 chart_interval_label = st.selectbox("캔들차트 기간 선택", list(interval_options.keys()))
 chart_interval = interval_options[chart_interval_label]
+
 # ✅ 사용자 입력
 query = st.text_input("궁금한 코인을 입력하세요 (예: bitcoin, ethereum)")
 
 if query:
     if mode == "AI 요약 도우미 (분리형)":
-        # 🔍 GPT로 코인명 추출
+        # ✅ 코인 시세
         try:
             coin_ticker = extract_coin_name(query)
             if coin_ticker != "None":
@@ -39,17 +39,39 @@ if query:
         except Exception as e:
             st.error(f"코인명 추출 실패: {e}")
 
-        # 📰 뉴스 요약
-        st.subheader("📰 뉴스 요약")
+        # ✅ 뉴스 RAG 요약
+        st.subheader("📰 뉴스 RAG 요약")
         try:
             news_list = get_rss_news()
-            news_titles = [n["title"] for n in news_list]
-            news_summary = summarize_content(news_titles, label="뉴스")
-            st.write(news_summary)
-        except Exception as e:
-            st.error(f"뉴스 요약 실패: {e}")
+            news_texts = []
+            for n in news_list:
+                title = n.get("title", "")
+                desc = n.get("summary", "") or n.get("description", "")
+                content = f"{title}. {desc}".strip()
+                if content:
+                    news_texts.append(content)
 
-        # 🐦 트윗 요약
+            if not news_texts:
+                raise ValueError("🔍 뉴스 내용이 비어 있어 인덱스를 생성할 수 없습니다.")
+
+            build_news_index(news_texts, save_path="faiss_news_index")
+            rag_answer = answer_news_query(query, index_path="faiss_news_index")
+        
+
+            st.write("📚 GPT 요약:")
+            st.write(summarize_content([n["title"] for n in news_list], label="뉴스"))
+            # st.write("🔍 RAG 기반 응답:")
+            # st.write(rag_answer.encode("utf-8", "ignore").decode("utf-8"))
+            st.markdown("🔍 **RAG 기반 응답:**")
+
+            # 긴 응답을 나눠서 출력
+            for line in rag_answer.strip().split("\n"):
+                st.markdown(line)
+
+        except Exception as e:
+            st.error(f"뉴스 RAG 요약 실패: {e}")
+
+        # ✅ 트윗 요약
         st.subheader("🐦 트위터 요약")
         try:
             tweet_list = get_recent_tweets(query=query, max_results=10)
@@ -61,40 +83,43 @@ if query:
 
     elif mode == "AI 조언 에이전트 (통합형)":
         st.subheader("💡 AI의 조언")
-
         try:
             coin_name = extract_coin_name(query)
             if coin_name == "None":
                 st.warning("❗ 문장에서 코인 이름을 찾을 수 없어요.")
                 coin_name = None
             elif "-" not in coin_name:
-                st.warning(f"⚠️ GPT가 추출한 '{coin_name}'은 yfinance 형식이 아니어서 차트가 없을 수 있어요.")
+                st.warning(f"⚠️ GPT가 추출한 '{coin_name}'은 yfinance 형식이 아닐 수 있어요.")
         except Exception as e:
             st.error(f"코인명 추출 실패: {e}")
             coin_name = None
 
         if coin_name:
-            with st.spinner("AI가 정보를 종합 분석 중입니다..."):
+            with st.spinner("AI가 정보를 분석 중입니다..."):
                 try:
                     result = coin_advisor_agent(query)
                     st.write(result)
                 except Exception as e:
                     st.error(f"AI 판단 실패: {e}")
 
-            # ✅ 차트 표시 (조건부)
+            # ✅ 차트 분석
             with st.spinner("📊 차트를 불러오는 중입니다..."):
-                fig, latest_row = plot_candlestick_with_indicators(ticker=coin_name, interval=chart_interval, period="3mo")
+                period = "3mo" if chart_interval == "1d" else ("1y" if chart_interval == "1wk" else "5y")
+                fig, latest_row = plot_candlestick_with_indicators(
+                    ticker=coin_name,
+                    interval=chart_interval,
+                    period=period
+                )
 
                 if fig:
                     st.subheader(f"📊 캔들차트 ({chart_interval})")
                     st.pyplot(fig)
 
-                    # GPT로 요약 요청
                     st.subheader("🤖 차트 해석")
                     try:
                         summary = summarize_technical_indicators(latest_row, coin_name)
                         st.write(summary)
                     except Exception as e:
-                        st.error(f"차트 요약 실패: {e}")
+                        st.error(f"차트 해석 실패: {e}")
                 else:
                     st.error("📉 유효한 차트 데이터가 없습니다.")
