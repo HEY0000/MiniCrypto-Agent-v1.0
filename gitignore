@@ -1,0 +1,5 @@
+faiss_tweet_index/
+faiss_news_index/
+faiss_index_news/
+*.faiss
+*.pkl
